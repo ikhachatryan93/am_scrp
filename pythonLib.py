@@ -1,8 +1,7 @@
-import csv
-from bs4 import BeautifulSoup
-from selenium.webdriver.common.action_chains import ActionChains
 import os
-import time
+
+import unicodecsv as csv
+from selenium.webdriver.common.action_chains import ActionChains
 
 
 ## Read From CSV (First Col in done)

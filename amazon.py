@@ -19,19 +19,26 @@ except:
 # import csv
 main_url = "https://www.amazon.co.uk/"
 
+proxies = ["124.88.67.30:843", "193.105.126.46:3128",
+           "124.88.67.34:81", "58.176.46.248:80", "124.88.67.34:843"]
 
-def setup_chrome_browser():
-    PROXY = "198.55.109.157:3128"
+
+# proxies = {"198.55.109.157:3128"
+#    ,"192.126.164.4:3128", "198.55.109.235:3128"
+#    ,"173.234.226.148:3128", "173.234.226.147:3128"}
+
+
+def setup_chrome_driver(proxy):
+    PROXY = proxy
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument('--proxy-server=%s' % PROXY)
     chrome = webdriver.Chrome("engines/chromedriver", chrome_options=chrome_options)
     return chrome
 
 
-def setup_proxy_and_browser():
-    service_args = [
-        '--proxy=198.55.109.157:3128'
-        '--proxy-type=socks5']
+def setup_phantomjs_driver(proxy):
+    service_args = [u'--proxy={{}}'.format(proxy),
+                    '--proxy-type=html']
 
     driver = webdriver.PhantomJS(executable_path="engines/phantomjs", service_args=service_args)
     return driver
@@ -41,16 +48,21 @@ def setup_proxy_and_browser():
 def request(url, driver, hover=False):
     try:
         driver.maximize_window()
+        time.sleep(0.2)
     except Exception as e:
         print (str(e))
 
     driver.get(url)
+    time.sleep(0.2)
 
     if hover:
         try:
             elements = driver.find_element_by_id("altImages").find_elements_by_css_selector(".a-button-input")
             for e in elements:
+                time.sleep(0.1)
                 pythonLib.hover(driver, e)
+                if e == elements[4]:
+                    break
         except Exception as e:
             print str(e)
 
@@ -67,7 +79,7 @@ def make_soup(driver):
 def get_feature_bullets(feature_table):
     desk = []
     for b in feature_table:
-        desk.append(b.get_text().replace(';', ' ').replace(',', ' ').replace('&nbsp', ' ').strip())
+        desk.append(b.get_text().replace(';', ' ').replace(',', ' ').strip())
 
     try:
         bul_1 = desk[0]
@@ -170,17 +182,18 @@ def save_products_data(soup, page_url, subcategory, filename, driver):
     try:
         keyword = soup.head.find("meta", {"name": "keywords"}).get("content").strip()
     except:
-            print "#####################"
-            print "can not find keyword" + page_url
-            return
+        print "#####################"
+        print "can not find keyword" + page_url
+        time.sleep(20)
+        return
 
     try:
-        title = soup.find('h1', {'id': 'title'}).get_text().replace('&nbsp', ' ').strip()
+        title = soup.find('h1', {'id': 'title'}).get_text().strip()
     except:
         title = ""
 
     try:
-        brand = soup.find('a', {'id': 'brand'}).get_text().replace('&nbsp', ' ').strip()
+        brand = soup.find('a', {'id': 'brand'}).get_text().strip()
     except:
         brand = ""
 
@@ -225,13 +238,11 @@ def save_products_data(soup, page_url, subcategory, filename, driver):
 item_class = "a-link-normal s-access-detail-page a-text-normal"
 
 
-def get_category_items(subcategory_url, subcategory_name, driver, all_items, page):
-    try:
-        print("page %d" % page)
-    except:
-        print ("asdasd")
+def get_items_urls(subcategory_url, subcategory_name, all_items, page, driver):
+    print("page %d" % page)
 
     try:
+        # soup = BeautifulSoup(urllib2.urlopen(subcategory_url).read())
         driver = request(subcategory_url, driver)
         soup = make_soup(driver)
     except:
@@ -245,7 +256,7 @@ def get_category_items(subcategory_url, subcategory_name, driver, all_items, pag
 
     if next_page:
         page += 1
-        get_category_items(next_page, subcategory_name, driver, all_items, page)
+        get_items_urls(next_page, subcategory_name, all_items, page, driver)
 
     try:
         items = soup.findAll('a', {"class": item_class})
@@ -255,9 +266,10 @@ def get_category_items(subcategory_url, subcategory_name, driver, all_items, pag
     for item in items:
         all_items[item.get("href")] = subcategory_name
 
+
 def unit_test(url):
-    subcategory="test_category"
-    driver = setup_proxy_and_browser()
+    subcategory = "test_category"
+    driver = setup_proxy_and_browser(proxies[0])
     result_file = "products_data_test.csv"
     print ("Extracting Product Data...")
     driver = request(url, driver, hover=True)
@@ -265,33 +277,16 @@ def unit_test(url):
 
     save_products_data(soup, url, subcategory, result_file, driver)
 
-# calling main function...
-def main():
-    #unit_test("https://www.amazon.co.uk/Coastline-la16mo-m-si-Guest-Towel-Cotton-x/dp/B01J9LRMIS/ref=sr_1_6166?m=A3P5ROKL5A1OLE&s=kitchen&ie=UTF8&qid=1481805662&sr=1-6166")
+
+def get_items(all_items, driver):
     result_file = "products_data.csv"
-
-    print ("Opening Browser")
-    driver = setup_proxy_and_browser()
-    #driver = setup_chrome_browser()
-
-    subcategory_links = pythonLib.read_col_csv("categories.csv", 4)
-    subcategory_names = pythonLib.read_col_csv("categories.csv", 0)
-
-    # extract_all_items from category
-    all_items = {}
-    for subcategory_link, subcategory_name in zip(subcategory_links, subcategory_names):
-        page = 1
-        print("extracting item urls from " + subcategory_name)
-        try:
-            get_category_items(subcategory_link, subcategory_name, driver, all_items, page)
-        except:
-            print ("skipping " + subcategory_name + " " + subcategory_link)
-
     try:
         done_urls = pythonLib.read_col_csv("done_urls.csv", 0)
     except:
         done_urls = []
 
+    change_id = 0
+    pr_id = 0
     for url, subcategory in all_items.iteritems():
 
         print ("Visiting URL: " + url)
@@ -303,6 +298,38 @@ def main():
 
             save_products_data(soup, url, subcategory, result_file, driver)
             pythonLib.save_to_csv("done_urls.csv", [url])
+
+            change_id += 1
+            if change_id == 5:
+                pr_id += 1
+                # driver = setup_chrome_browser(proxies[(pr_id % 5)])
+                driver = setup_phantomjs_driver(proxies[(pr_id % 5)])
+                change_id = 0
+
+
+# calling main function...
+def main():
+    #  unit_test("https://www.amazon.co.uk/Coastline-la16mo-m-si-Guest-Towel-Cotton-x/dp/B01J9LRMIS/ref=sr_1_6166?m=A3P5ROKL5A1OLE&s=kitchen&ie=UTF8&qid=1481805662&sr=1-6166")
+
+    print ("Opening Browser")
+    driver = setup_phantomjs_driver(proxies[0])
+    # driver = setup_chrome_driver(proxies[0])
+
+    subcategory_links = pythonLib.read_col_csv("categories.csv", 4)
+    subcategory_names = pythonLib.read_col_csv("categories.csv", 0)
+
+    # extract_all_items from category
+    for subcategory_link, subcategory_name in zip(subcategory_links, subcategory_names):
+        page = 1
+        print("extracting item urls from " + subcategory_name)
+        all_items = {}
+        try:
+            get_items_urls(subcategory_link, subcategory_name, all_items, page, driver)
+        except:
+            print ("skipping " + subcategory_name + " " + subcategory_link)
+
+        get_items(all_items, driver)
+
 
 # calling get_profiles() function to start the program
 if __name__ == '__main__':
