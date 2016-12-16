@@ -315,7 +315,7 @@ def get_items(all_items, driver):
             if change_id == 5:
                 pr_id += 1
                 # driver = setup_chrome_browser(proxies[(pr_id % 5)])
-                driver = setup_phantomjs_driver(proxies[(pr_id % 5)])
+                driver = setup_phantomjs_driver(proxies[(pr_id % 12)])
                 change_id = 0
 
 
